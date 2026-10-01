@@ -1,0 +1,237 @@
+#[include mainsail.cfg]
+#[include fluidd.cfg]
+
+[virtual_sdcard]
+path: ~/printer_data/gcodes
+on_error_gcode: CANCEL_PRINT
+
+[pause_resume]
+[display_status]
+
+[mcu]
+serial: /dev/serial/by-id/yourserialnumber
+
+[printer]
+kinematics: corexy
+max_velocity: 500
+max_accel: 10000
+square_corner_velocity: 5.0
+max_z_velocity: 10
+max_z_accel: 250
+
+[firmware_retraction]
+retract_length: 0.8
+retract_speed: 40
+unretract_extra_length: 0
+unretract_speed: 60
+
+[gcode_arcs]
+resolution: 0.1
+
+[force_move]
+enable_force_move: True
+
+[skew_correction]
+
+# ---------------------------------------------------------------------------
+# CR Touch  (Klipper uses [bltouch] for CR Touch as well)
+# ---------------------------------------------------------------------------
+[bltouch]
+sensor_pin: ^PC14
+control_pin: PA1
+x_offset: 0
+y_offset: 54.7
+z_offset: 0.6
+probe_with_touch_mode: True
+
+# B motor LEFT  — board slot XM
+[stepper_x]
+step_pin: PB13
+dir_pin: !PB12                # flip to PB12 if G28 X still runs away from the X switch
+enable_pin: !PB14
+microsteps: 64
+rotation_distance: 40
+endstop_pin: ^PC0
+position_endstop: 0
+position_max: 232
+homing_speed: 75
+second_homing_speed: 25
+
+[tmc2209 stepper_x]
+uart_pin: PC11
+tx_pin: PC10
+uart_address: 0
+run_current: 0.6
+interpolate: false
+
+# A motor RIGHT  — board slot YM
+[stepper_y]
+step_pin: PB10
+dir_pin: !PB2                 # flip to PB2 if G28 Y still runs away from the Y switch
+enable_pin: !PB11
+microsteps: 64
+rotation_distance: 40
+endstop_pin: ^PC1
+position_endstop: 248         # Y switch is at the MAX end. Use 0 if the switch is at the front
+position_max: 248
+homing_speed: 75
+second_homing_speed: 25
+
+[tmc2209 stepper_y]
+uart_pin: PC11
+tx_pin: PC10
+uart_address: 2
+run_current: 0.6
+interpolate: false
+
+# Z — moving bed. Homing must raise the bed toward the CR Touch.
+[stepper_z]
+step_pin: PB0
+dir_pin: PC5                 # flip to PC5 only if home LOWERS the bed / opens the gap
+enable_pin: !PB1
+microsteps: 128
+rotation_distance: 4
+full_steps_per_rotation: 200
+endstop_pin: probe:z_virtual_endstop
+position_max: 245
+position_min: -2.5
+homing_speed: 8
+second_homing_speed: 3
+homing_retract_speed: 5
+homing_retract_dist: 3.0
+
+[tmc2209 stepper_z]
+uart_pin: PC11
+tx_pin: PC10
+uart_address: 1
+run_current: 0.5
+stealthchop_threshold: 0
+interpolate: true
+
+# Extruder — slot EM. Enable pin is PD1 on SKR Mini E3 V3 (V2 was PD2).
+[extruder]
+step_pin: PB3
+dir_pin: PB4                  # invert to !PB4 if filament goes the wrong way
+enable_pin: !PD1
+microsteps: 16
+full_steps_per_rotation: 200
+rotation_distance: 22.67895   # calibrate
+gear_ratio: 50:8              # 8T pinion. Use 50:10 if the motor has a 10T pinion
+nozzle_diameter: 0.400
+filament_diameter: 1.750
+heater_pin: PC8
+sensor_type: Generic 3950
+sensor_pin: PA0
+min_temp: 10
+max_temp: 270
+min_extrude_temp: 170
+pressure_advance: 0.035
+pressure_advance_smooth_time: 0.040
+max_extrude_only_distance: 150.0
+max_extrude_only_velocity: 120
+max_extrude_cross_section: 5
+control: pid
+pid_Kp: 26.423
+pid_Ki: 2.202
+pid_Kd: 79.268
+
+[tmc2209 extruder]
+uart_pin: PC11
+tx_pin: PC10
+uart_address: 3
+interpolate: true
+run_current: 0.32
+sense_resistor: 0.11
+# stealthchop_threshold: 0    # uncomment for spreadcycle
+
+# home_xy_position is the NOZZLE. Probe sits at nozzle + (0, 22.15)
+[safe_z_home]
+home_xy_position: 116,102
+speed: 100
+z_hop: 10
+z_hop_speed: 10
+
+[bed_mesh]
+speed: 120
+horizontal_move_z: 5
+mesh_min: 15, 60
+mesh_max: 220, 235
+probe_count: 5, 5
+algorithm: bicubic
+fade_start: 1
+fade_end: 10
+fade_target: 0
+
+[temperature_sensor raspberry_pi]
+sensor_type: temperature_host
+min_temp: 10
+max_temp: 100
+
+[temperature_sensor mcu_temp]
+sensor_type: temperature_mcu
+min_temp: 0
+max_temp: 100
+
+[heater_bed]
+heater_pin: PC9
+sensor_type: EPCOS 100K B57560G104F
+sensor_pin: PC4
+min_temp: 0
+max_temp: 120
+pwm_cycle_time: 0.01
+control: pid
+pid_Kp: 74.743
+pid_Ki: 2.195
+pid_Kd: 636.252
+
+[fan]
+pin: PC6
+max_power: 1.0
+kick_start_time: 0.2
+
+[heater_fan heatbreak_cooling_fan]
+pin: PC7
+heater: extruder
+fan_speed: 1.0
+heater_temp: 50.0
+
+[gcode_macro PRINT_START]
+gcode:
+  {% set target_bed = params.BED|int %}
+  {% set target_extruder = params.EXTRUDER|int %}
+    G90
+    M83
+    G21
+    # SKEW_PROFILE LOAD=my_skew_profile
+    M140 S{target_bed}
+    M104 S{target_extruder|int - 50}
+    G28
+    G1 Z10 F600
+    M190 S{target_bed}
+    M109 S{target_extruder|int - 50}
+    G4 P120000
+    G28 Z
+    BED_MESH_CALIBRATE
+    M104 S{target_extruder}
+    G1 X20 Y2 Z20 F3000
+    M109 S{target_extruder}
+    G0 X2 Y2 F10000
+    G0 Z0.4
+    G91
+    G1 F1800 E5
+    G1 X50 E20 F1000
+    G90
+
+[gcode_macro PRINT_END]
+gcode:
+    G4
+    M221 S100
+    M106 S0
+    M104 S0
+    M140 S0
+    G91
+    G1 Z1 F300
+    G1 F1800 E-5
+    G90
+    G1 X20 Y210 F30000
+    M84
